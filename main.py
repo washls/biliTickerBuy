@@ -27,6 +27,20 @@ UiCommand = Annotated[
 CliCommand = BuyCommand | UiCommand
 
 
+def _configure_console_encoding() -> None:
+    """Make Tyro's Unicode help text safe on legacy Windows consoles."""
+
+    for stream in (sys.stdout, sys.stderr):
+        reconfigure = getattr(stream, "reconfigure", None)
+        if not callable(reconfigure):
+            continue
+        try:
+            reconfigure(encoding="utf-8", errors="backslashreplace")
+        except (OSError, ValueError):
+            # Some embedded or redirected streams cannot be reconfigured.
+            pass
+
+
 def _normalize_argv(argv: list[str]) -> list[str]:
     normalized = [
         "--config-file" if arg in {"-cf", "--config-file"} else arg for arg in argv
@@ -53,6 +67,7 @@ def _explicit_cli_flags(argv: list[str]) -> set[str]:
 
 
 def main() -> None:
+    _configure_console_encoding()
     argv = _normalize_argv(sys.argv[1:])
     command = tyro.cli(CliCommand, args=argv)  # type: ignore
     if isinstance(command, BuyCliArgs):

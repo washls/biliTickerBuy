@@ -53,6 +53,22 @@ def _managed_runs_root(root: str | Path | None = None) -> Path:
     return target
 
 
+def _managed_run_dir(managed_root: Path, run_id: str) -> Path:
+    """Resolve a single managed-run directory without allowing path traversal."""
+
+    normalized_id = str(run_id).strip()
+    if not normalized_id or Path(normalized_id).name != normalized_id:
+        raise ValueError("invalid run_id")
+
+    resolved_root = managed_root.resolve()
+    run_dir = (resolved_root / normalized_id).resolve()
+    try:
+        run_dir.relative_to(resolved_root)
+    except ValueError as exc:
+        raise ValueError("invalid run_id") from exc
+    return run_dir
+
+
 def _dump_json(path: Path, payload: dict[str, Any]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp_path = path.with_suffix(path.suffix + ".tmp")
@@ -434,7 +450,16 @@ def start_managed_buy(
 
     managed_root = _managed_runs_root(runs_root)
     assigned_run_id = run_id or uuid.uuid4().hex
-    run_dir = managed_root / assigned_run_id
+    try:
+        run_dir = _managed_run_dir(managed_root, assigned_run_id)
+    except ValueError:
+        return {
+            "ok": False,
+            "validation": validation.to_dict(),
+            "run": None,
+            "error": "invalid run_id",
+            "run_id": assigned_run_id,
+        }
     if run_dir.exists():
         return {
             "ok": False,
@@ -548,7 +573,10 @@ def managed_task_status(
     *,
     runs_root: str | Path | None = None,
 ) -> dict[str, Any]:
-    run_dir = _managed_runs_root(runs_root) / run_id
+    try:
+        run_dir = _managed_run_dir(_managed_runs_root(runs_root), run_id)
+    except ValueError:
+        return {"ok": False, "error": "invalid run_id", "run_id": run_id}
     status_path = run_dir / "status.json"
     if not status_path.exists():
         return {"ok": False, "error": "managed run not found", "run_id": run_id}
@@ -564,7 +592,10 @@ def cancel_managed_buy(
     *,
     runs_root: str | Path | None = None,
 ) -> dict[str, Any]:
-    run_dir = _managed_runs_root(runs_root) / run_id
+    try:
+        run_dir = _managed_run_dir(_managed_runs_root(runs_root), run_id)
+    except ValueError:
+        return {"ok": False, "error": "invalid run_id", "run_id": run_id}
     status_path = run_dir / "status.json"
     if not status_path.exists():
         return {"ok": False, "error": "managed run not found", "run_id": run_id}
@@ -629,14 +660,12 @@ def delete_managed_buy(
     force: bool = False,
 ) -> dict[str, Any]:
     managed_root = _managed_runs_root(runs_root)
-    run_dir = managed_root / run_id
+    try:
+        run_dir = _managed_run_dir(managed_root, run_id)
+    except ValueError:
+        return {"ok": False, "error": "invalid run_id", "run_id": run_id}
     if not run_dir.exists():
         return {"ok": False, "error": "managed run not found", "run_id": run_id}
-
-    try:
-        run_dir.relative_to(managed_root)
-    except ValueError:
-        return {"ok": False, "error": "run dir escapes managed root", "run_id": run_id}
 
     status_path = run_dir / "status.json"
     status = _load_json(status_path) if status_path.exists() else {}

@@ -130,7 +130,18 @@ class KVDatabase:
         value = self.get(key)
         if value is None:
             return default
-        return bool(value)
+        if isinstance(value, bool):
+            return value
+        if isinstance(value, str):
+            normalized = value.strip().lower()
+            if normalized in {"1", "true", "yes", "y", "on"}:
+                return True
+            if normalized in {"0", "false", "no", "n", "off", ""}:
+                return False
+            return default
+        if isinstance(value, (int, float)):
+            return bool(value)
+        return default
 
     def update(self, key: str, value: Any) -> None:
         """

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from .interface import (
+from interface import (
     BuyTaskRecord,
     ValidationResult,
     build_runtime_options,
