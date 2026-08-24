@@ -50,7 +50,7 @@ jobs:
           labels: |
             org.opencontainers.image.title=biliTickerBuy
             org.opencontainers.image.description=开源的 B 站会员购辅助工具，提供命令行和 Gradio 界面
-            org.opencontainers.image.licenses=MIT
+            org.opencontainers.image.licenses=PolyForm-Noncommercial-1.0.0
 
       - name: Log in to GitHub Container Registry
         if: github.event_name != 'pull_request'

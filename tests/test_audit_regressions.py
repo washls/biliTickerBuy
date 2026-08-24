@@ -39,8 +39,14 @@ def test_managed_run_id_must_resolve_inside_runs_root(tmp_path):
     with pytest.raises(ValueError, match="invalid run_id"):
         _managed_run_dir(runs_root, "../escaped-run")
 
-    assert managed_task_status("../escaped-run", runs_root=runs_root)["error"] == "invalid run_id"
-    assert cancel_managed_buy("../escaped-run", runs_root=runs_root)["error"] == "invalid run_id"
+    assert (
+        managed_task_status("../escaped-run", runs_root=runs_root)["error"]
+        == "invalid run_id"
+    )
+    assert (
+        cancel_managed_buy("../escaped-run", runs_root=runs_root)["error"]
+        == "invalid run_id"
+    )
 
 
 def test_help_is_safe_when_parent_console_uses_gbk():
