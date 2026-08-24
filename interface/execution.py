@@ -61,11 +61,12 @@ def _managed_run_dir(managed_root: Path, run_id: str) -> Path:
         raise ValueError("invalid run_id")
 
     resolved_root = managed_root.resolve()
-    run_dir = (resolved_root / normalized_id).resolve()
-    try:
-        run_dir.relative_to(resolved_root)
-    except ValueError as exc:
-        raise ValueError("invalid run_id") from exc
+    candidate = resolved_root / normalized_id
+    run_dir = candidate.resolve()
+    candidate_path = os.path.normcase(os.path.abspath(candidate))
+    resolved_path = os.path.normcase(os.fspath(run_dir))
+    if candidate_path != resolved_path or run_dir.parent != resolved_root:
+        raise ValueError("invalid run_id")
     return run_dir
 
 
