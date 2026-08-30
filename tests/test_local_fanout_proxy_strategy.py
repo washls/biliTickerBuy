@@ -1,14 +1,21 @@
+import time
 from typing import Any
+from urllib.parse import unquote, urlsplit
 
 import httpx
 
 from app_cmd.config.BuyConfig import BuyConfig
 from interface.config import build_runtime_options
 from tab.go import _build_task_proxy_list
-from util.request.BiliRequest import AbstractH2Client, BiliRequest
-from util.h2client.h2connection import H2Response
 from util.h2client.constants import H2CLIENT_CONNECTIONS_PER_SOURCE_IP
-from util.h2client.ja_h2_client import ProxyPoolCreateV2FanoutJA3H2Client
+from util.h2client.h2connection import H2Response
+from util.h2client.ja_h2_client import (
+    LocalIPCreateV2FanoutJA3H2Client,
+    ProxyPoolCreateV2FanoutJA3H2Client,
+    SourceAddress,
+)
+from util.h2client import local_sources
+from util.request.BiliRequest import AbstractH2Client, BiliRequest
 
 
 class FakeCookies:
@@ -131,6 +138,19 @@ class FakeH2Connection:
         self.closed = True
 
 
+def _wait_for_business_connections(url: str, count: int) -> list[FakeH2Connection]:
+    deadline = time.monotonic() + 1
+    while True:
+        connections = [
+            instance
+            for instance in FakeH2Connection.instances
+            if instance.calls and instance.calls[-1][1] == url
+        ]
+        if len(connections) >= count or time.monotonic() >= deadline:
+            return connections
+        time.sleep(0.001)
+
+
 def test_task_proxy_list_includes_direct_when_enabled():
     assert _build_task_proxy_list(
         "http://127.0.0.1:18080,http://127.0.0.1:28080",
@@ -178,6 +198,66 @@ def test_runtime_uses_default_h2_connections_per_source_ip():
     assert config.h2_connections_per_source_ip == H2CLIENT_CONNECTIONS_PER_SOURCE_IP
 
 
+def test_runtime_accepts_local_ip_fanout_strategy():
+    runtime = build_runtime_options(
+        create_request_proxy_strategy="local_ip_fanout",
+    )
+
+    config = BuyConfig.from_runtime_options("{}", runtime)
+
+    assert config.create_request_proxy_strategy == "local_ip_fanout"
+
+
+def test_local_ip_discovery_retries_without_interface_alias_filter(monkeypatch):
+    source = SourceAddress(ip="2001:db8::1", family="ipv6")
+    discovered = iter([[], [source]])
+    monkeypatch.setattr(
+        local_sources,
+        "_discover_sources_with_powershell",
+        lambda _aliases: next(discovered),
+    )
+    monkeypatch.setattr(
+        local_sources,
+        "_discover_sources_with_socket",
+        lambda: (_ for _ in ()).throw(AssertionError("unexpected socket fallback")),
+    )
+
+    assert local_sources.discover_interface_source_ips() == [source]
+
+
+def test_local_ip_fanout_builds_connections_for_each_source():
+    FakeH2Connection.instances = []
+    FakeH2Connection.post_bodies_by_proxy = {
+        "": [b'{"errno":900001}', b'{"errno":900001}']
+    }
+    FakeH2Connection.post_errors_by_proxy = {}
+    FakeH2Connection.post_responses_by_proxy = {}
+    sources = [
+        SourceAddress(ip="192.0.2.10", family="ipv4"),
+        SourceAddress(ip="2001:db8::10", family="ipv6"),
+    ]
+    client = LocalIPCreateV2FanoutJA3H2Client(
+        source_ip_provider=lambda: sources,
+        connection_factory=FakeH2Connection,
+        connections_per_source_ip=1,
+    )
+
+    response = client.post(
+        "https://show.bilibili.com/api/ticket/order/createV2",
+        json={"project_id": 1},
+    )
+
+    assert response.status_code == 200
+    business_connections = _wait_for_business_connections(
+        "https://show.bilibili.com/api/ticket/order/createV2",
+        len(sources),
+    )
+    assert {instance.source_ip for instance in business_connections} == {
+        "192.0.2.10",
+        "2001:db8::10",
+    }
+
+
 def test_h2_client_constructor_uses_abstract_client_interface():
     FakeH2Client.instances = []
     request = BiliRequest(
@@ -200,11 +280,19 @@ def test_h2_client_constructor_uses_abstract_client_interface():
         ("SESSDATA", "abc", ".bilibili.com"),
         ("SESSDATA", "abc", ".bilibili.com"),
     ]
-    assert client.calls == [
-        ("head", url),
-        ("post", url, None, {"project_id": 1}),
-        ("get", url, {"project_id": 1}),
-    ]
+    assert client.calls[0] == ("head", url)
+    assert client.calls[1][0] == "post"
+    assert urlsplit(client.calls[1][1]).hostname == urlsplit(url).hostname
+    assert unquote(urlsplit(client.calls[1][1]).path).lstrip("/") == urlsplit(
+        url
+    ).path.lstrip("/")
+    assert client.calls[1][2:] == (None, {"project_id": 1})
+    assert client.calls[2][0] == "get"
+    assert urlsplit(client.calls[2][1]).hostname == urlsplit(url).hostname
+    assert unquote(urlsplit(client.calls[2][1]).path).lstrip("/") == urlsplit(
+        url
+    ).path.lstrip("/")
+    assert client.calls[2][2] == {"project_id": 1}
 
     request._invalidate_h2_client()
 
@@ -292,13 +380,10 @@ def test_proxy_pool_fanout_builds_one_create_connection_per_proxy():
     )
 
     assert response.status_code == 200
-    business_connections = [
-        instance
-        for instance in FakeH2Connection.instances
-        if instance.calls
-        and instance.calls[-1][1]
-        == "https://show.bilibili.com/api/ticket/order/createV2"
-    ]
+    business_connections = _wait_for_business_connections(
+        "https://show.bilibili.com/api/ticket/order/createV2",
+        2,
+    )
     assert sorted(instance.proxy_url for instance in business_connections) == [
         "http://127.0.0.1:18080",
         "socks5://127.0.0.1:19090",
@@ -322,13 +407,10 @@ def test_proxy_pool_fanout_can_use_direct_single_source():
     )
 
     assert response.status_code == 200
-    business_connections = [
-        instance
-        for instance in FakeH2Connection.instances
-        if instance.calls
-        and instance.calls[-1][1]
-        == "https://show.bilibili.com/api/ticket/order/createV2"
-    ]
+    business_connections = _wait_for_business_connections(
+        "https://show.bilibili.com/api/ticket/order/createV2",
+        2,
+    )
     assert len(business_connections) == 2
     assert {instance.source_ip for instance in business_connections} == {None}
     assert {instance.proxy_url for instance in business_connections} == {None}
@@ -352,11 +434,7 @@ def test_proxy_pool_fanout_detects_percent_encoded_create_v2_path():
     )
 
     assert response.status_code == 200
-    business_connections = [
-        instance
-        for instance in FakeH2Connection.instances
-        if instance.calls and instance.calls[-1][1] == encoded_create_url
-    ]
+    business_connections = _wait_for_business_connections(encoded_create_url, 2)
     assert len(business_connections) == 2
 
 

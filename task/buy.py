@@ -62,6 +62,7 @@ from util.request.exceptions import BiliConnectionError, BiliRateLimitError
 
 
 LOCAL_FANOUT_PROXY_STRATEGY = "local_fanout"
+LOCAL_IP_FANOUT_STRATEGY = "local_ip_fanout"
 
 
 @dataclass(slots=True)
@@ -468,12 +469,10 @@ def buy_stream(config: BuyConfig):
     logger.info(f"目前已配置代理：{masked_proxies or '直连'}")
     h2_client_type = None
     h2_client_options = None
-    if config.create_request_proxy_strategy == LOCAL_FANOUT_PROXY_STRATEGY:
-        from util.h2client.ja_h2_client import ProxyPoolCreateV2FanoutJA3H2Client
-
-        proxy_pool = ProxyManager.parse_proxy_list(config.https_proxys)
-        if not proxy_pool:
-            proxy_pool = ["none"]
+    if config.create_request_proxy_strategy in {
+        LOCAL_FANOUT_PROXY_STRATEGY,
+        LOCAL_IP_FANOUT_STRATEGY,
+    }:
         try:
             h2_connections_per_source_ip = max(
                 1,
@@ -481,11 +480,19 @@ def buy_stream(config: BuyConfig):
             )
         except (TypeError, ValueError):
             h2_connections_per_source_ip = H2CLIENT_CONNECTIONS_PER_SOURCE_IP
-        h2_client_type = ProxyPoolCreateV2FanoutJA3H2Client
-        h2_client_options = {
-            "proxy_pool": proxy_pool,
-            "connections_per_source_ip": h2_connections_per_source_ip,
-        }
+        h2_client_options = {"connections_per_source_ip": h2_connections_per_source_ip}
+        if config.create_request_proxy_strategy == LOCAL_FANOUT_PROXY_STRATEGY:
+            from util.h2client.ja_h2_client import (
+                ProxyPoolCreateV2FanoutJA3H2Client,
+            )
+
+            proxy_pool = ProxyManager.parse_proxy_list(config.https_proxys)
+            h2_client_type = ProxyPoolCreateV2FanoutJA3H2Client
+            h2_client_options["proxy_pool"] = proxy_pool or ["none"]
+        else:
+            from util.h2client.ja_h2_client import LocalIPCreateV2FanoutJA3H2Client
+
+            h2_client_type = LocalIPCreateV2FanoutJA3H2Client
     _request = BiliRequest(
         cookies=cookies,
         proxy=config.https_proxys,

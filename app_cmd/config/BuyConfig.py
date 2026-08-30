@@ -148,7 +148,7 @@ class BuyConfig(BasicConfig):
         cli="--create-request-proxy-strategy",
         cast=lambda value: str(value or "standard").lower(),
     )
-    """Internal create-order request transport strategy."""
+    """Create-order transport: standard, proxy fanout, or local-IP fanout."""
 
     h2_connections_per_source_ip: int = config_field(
         H2CLIENT_CONNECTIONS_PER_SOURCE_IP,
@@ -158,7 +158,7 @@ class BuyConfig(BasicConfig):
         cli="--h2-connections-per-source-ip",
         cast=int,
     )
-    """H2 connection count per proxy/source IP for local fanout create requests."""
+    """H2 connections per proxy or local source IP for fanout requests."""
 
     rate_limit_delay_ms: int = config_field(
         DEFAULT_RATE_LIMIT_DELAY_MS,

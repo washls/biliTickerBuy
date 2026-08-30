@@ -327,9 +327,22 @@ def go_start_tab():
             https_proxys,
             include_direct=include_direct_proxy,
         )
+        proxy_assignment_strategy = str(
+            ConfigDB.get("proxyAssignmentStrategy") or "balanced"
+        ).lower()
+        if proxy_assignment_strategy not in {
+            "balanced",
+            "queue",
+            "local_fanout",
+            "local_ip_fanout",
+        }:
+            proxy_assignment_strategy = "balanced"
         if not https_proxy_list:
-            gr.Warning("已关闭直连，请至少配置一个代理。")
-            return gr.update(visible=False)
+            if proxy_assignment_strategy == "local_ip_fanout":
+                https_proxy_list = ["none"]
+            else:
+                gr.Warning("已关闭直连，请至少配置一个代理。")
+                return gr.update(visible=False)
         assigned_proxies: list[list[str]] = []
         assigned_proxies_next_idx = 0
         # 从配置文件加载
@@ -337,11 +350,6 @@ def go_start_tab():
             time_start=time_start,
             interval=interval,
         )
-        proxy_assignment_strategy = str(
-            ConfigDB.get("proxyAssignmentStrategy") or "balanced"
-        ).lower()
-        if proxy_assignment_strategy not in {"balanced", "queue", "local_fanout"}:
-            proxy_assignment_strategy = "balanced"
         queue_concurrency_limit = ConfigDB.get_as_int("queueConcurrencyLimit", 0)
         log_retention_days = buy_config.log_retention_days
         auto_cleanup_logs = ConfigDB.get("autoCleanupLogs")
@@ -413,6 +421,11 @@ def go_start_tab():
                 filename,
                 config=buy_config.with_overrides(
                     https_proxys=",".join(assigned_proxies[assigned_proxies_next_idx]),
+                    create_request_proxy_strategy=(
+                        "local_ip_fanout"
+                        if proxy_assignment_strategy == "local_ip_fanout"
+                        else "standard"
+                    ),
                 ),
             )
             assigned_proxies_next_idx += 1

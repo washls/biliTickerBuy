@@ -33,6 +33,7 @@ def go_settings_tab(header_ui):
         "balanced",
         "queue",
         "local_fanout",
+        "local_ip_fanout",
     }:
         proxy_assignment_strategy_default = "balanced"
 
@@ -581,6 +582,7 @@ def go_settings_tab(header_ui):
                           <p><strong>均匀分配模式：</strong>程序会尽量把代理均匀分配给所有抢票任务。适合代理数量较多的情况。但是如果你配置的代理数目不够多，同一个代理在运行过程中可能会被多个程序使用。</p>
                           <p><strong>队列模式：</strong>程序会将代理作为队列资源分配给抢票任务，尽量保证同一时间内每个正在运行的任务使用不同的代理。如果抢票任务数为 n，代理数量为 m：当 n &lt;= m 时，每个抢票任务都会分配到不同的代理；当 n &gt; m 时，最多同时运行 m 个抢票任务，未分配到代理的任务会进入等待队列，等前面的任务结束后再继续执行。这种模式适合希望同一时间内每个任务尽量使用不同 IP，并避免多个任务共用同一个代理的场景。</p>
                           <p><strong>代理池并发：</strong>每个任务都会拿到完整出口池，并在关键 create 请求上通过多个出口同时尝试，谁先返回有效结果就优先使用。未配置代理且允许直连时，会使用直连作为单一出口，并按同代理并行数量建立多条 H2 连接。</p>
+                          <p><strong>本机 IP 并发：</strong>关键 create 请求会通过本机可用的 IPv4/IPv6 地址同时尝试；其他请求仍沿用已配置代理。未发现多个地址时会自动退化为可发现的单一地址。</p>
                         </div>
                         """
                     )
@@ -590,6 +592,7 @@ def go_settings_tab(header_ui):
                             ("均匀分配", "balanced"),
                             ("队列模式", "queue"),
                             ("代理池并发", "local_fanout"),
+                            ("本机 IP 并发", "local_ip_fanout"),
                         ],
                         value=proxy_assignment_strategy_default,
                         interactive=True,
@@ -614,7 +617,7 @@ def go_settings_tab(header_ui):
                         value=buy_defaults.h2_connections_per_source_ip,
                         minimum=1,
                         step=1,
-                        info="同代理并行数量。代理池并发模式下，每个代理或直连出口会同时建立的 H2 连接数。",
+                        info="每个代理或本机源 IP 同时建立的 H2 连接数。",
                     )
 
             with gr.Tab("音乐"):
@@ -914,6 +917,7 @@ def go_settings_tab(header_ui):
                           <p><strong>均匀分配模式：</strong>程序会尽量把代理均匀分配给所有抢票任务。适合代理数量较多的情况。但是如果你配置的代理数目不够多，同一个代理在运行过程中可能会被多个程序使用。</p>
                           <p><strong>队列模式：</strong>程序会将代理作为队列资源分配给抢票任务，尽量保证同一时间内每个正在运行的任务使用不同的代理。如果抢票任务数为 n，代理数量为 m：当 n &lt;= m 时，每个抢票任务都会分配到不同的代理；当 n &gt; m 时，最多同时运行 m 个抢票任务，未分配到代理的任务会进入等待队列，等前面的任务结束后再继续执行。这种模式适合希望同一时间内每个任务尽量使用不同 IP，并避免多个任务共用同一个代理的场景。</p>
                           <p><strong>代理池并发：</strong>每个任务都会拿到完整代理池，并在关键 create 请求上通过多个代理同时尝试，谁先返回有效结果就优先使用。适合单个热门票档冲刺，但要求至少配置一个真实代理，不会使用直连。</p>
+                          <p><strong>本机 IP 并发：</strong>关键 create 请求会通过本机可用的 IPv4/IPv6 地址同时尝试；其他请求仍沿用已配置代理。未发现多个地址时会自动退化为可发现的单一地址。</p>
                         </div>
                         """
                     )
@@ -923,6 +927,7 @@ def go_settings_tab(header_ui):
                             ("均匀分配", "balanced"),
                             ("队列模式", "queue"),
                             ("代理池并发", "local_fanout"),
+                            ("本机 IP 并发", "local_ip_fanout"),
                         ],
                         value=proxy_assignment_strategy_default,
                         interactive=True,
@@ -947,7 +952,7 @@ def go_settings_tab(header_ui):
                         value=buy_defaults.h2_connections_per_source_ip,
                         minimum=1,
                         step=1,
-                        info="同代理并行数量。代理池并发模式下，每个代理或直连出口会同时建立的 H2 连接数。",
+                        info="每个代理或本机源 IP 同时建立的 H2 连接数。",
                     )
 
             with gr.Tab("音乐"):

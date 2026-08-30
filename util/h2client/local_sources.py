@@ -56,11 +56,12 @@ def _discover_sources_with_powershell(
     quoted_aliases = ",".join(
         "'" + alias.replace("'", "''") + "'" for alias in interface_aliases
     )
+    interface_filter = "-InterfaceAlias $aliases " if interface_aliases else ""
     script = (
         "[Console]::OutputEncoding=[System.Text.Encoding]::UTF8; "
         "$OutputEncoding=[System.Text.Encoding]::UTF8; "
         f"$aliases=@({quoted_aliases}); "
-        "Get-NetIPAddress -InterfaceAlias $aliases "
+        f"Get-NetIPAddress {interface_filter}"
         "-AddressFamily IPv4,IPv6 -ErrorAction SilentlyContinue | "
         "Where-Object { $_.IPAddress } | "
         "Select-Object IPAddress,InterfaceAlias | "
@@ -131,6 +132,13 @@ def discover_interface_source_ips(
         sources = _discover_sources_with_powershell(interface_aliases)
     except Exception:
         sources = None
-    if sources is not None:
+    if sources:
         return sources
+    if interface_aliases:
+        try:
+            sources = _discover_sources_with_powershell(())
+        except Exception:
+            sources = None
+        if sources:
+            return sources
     return _discover_sources_with_socket()

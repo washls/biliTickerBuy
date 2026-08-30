@@ -716,7 +716,7 @@ class _CreateV2FanoutJA3H2Client(_SourcePoolJA3H2Client):
         finally:
             executor.shutdown(
                 wait=wait_for_futures,
-                cancel_futures=not wait_for_futures,
+                cancel_futures=False,
             )
 
     def _should_fanout_create_v2(self, url: str) -> bool:
@@ -780,6 +780,20 @@ class _CreateV2FanoutJA3H2Client(_SourcePoolJA3H2Client):
                 outcome.slot,
                 reason="http_412",
             )
+
+
+class LocalIPCreateV2FanoutJA3H2Client(_CreateV2FanoutJA3H2Client):
+    def __init__(
+        self,
+        *,
+        source_ip_provider: SourceIPProvider | None = None,
+        **kwargs: Any,
+    ) -> None:
+        if source_ip_provider is None:
+            from .local_sources import discover_interface_source_ips
+
+            source_ip_provider = discover_interface_source_ips
+        super().__init__(source_ip_provider=source_ip_provider, **kwargs)
 
 
 class ProxyPoolCreateV2FanoutJA3H2Client(_CreateV2FanoutJA3H2Client):
@@ -904,5 +918,5 @@ class ProxyPoolCreateV2FanoutJA3H2Client(_CreateV2FanoutJA3H2Client):
         finally:
             executor.shutdown(
                 wait=wait_for_futures,
-                cancel_futures=not wait_for_futures,
+                cancel_futures=False,
             )
