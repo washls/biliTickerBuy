@@ -300,10 +300,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: release-manifest-${{ matrix.config.os.filename }}
-          path: |
-            *.zip
-            *.dmg
-            release-manifest-entry.json
+          path: release-manifest-entry.json
           if-no-files-found: error
           retention-days: 1
 
