@@ -305,6 +305,7 @@ jobs:
             *.dmg
             release-manifest-entry.json
           if-no-files-found: error
+          retention-days: 1
 
   upload_release_manifest:
     name: Upload Release Manifest
